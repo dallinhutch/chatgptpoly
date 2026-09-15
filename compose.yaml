@@ -16,13 +16,13 @@ services:
     env_file: .env
     command: ["npm", "run", "migrate"]
     depends_on:
-      postgres: {condition: service_healthy}
+      postgres: { condition: service_healthy }
   provision:
     build: .
     env_file: .env
     command: ["node", "--import", "tsx", "scripts/provision-role.ts"]
     depends_on:
-      migrate: {condition: service_completed_successfully}
+      migrate: { condition: service_completed_successfully }
   web:
     build: .
     restart: unless-stopped
@@ -31,7 +31,7 @@ services:
       DATABASE_URL: postgresql://polylab_runtime:${APP_DATABASE_PASSWORD:?Set runtime password}@postgres:5432/polylab
       LOCAL_DATABASE_PATH: ""
     depends_on:
-      provision: {condition: service_completed_successfully}
+      provision: { condition: service_completed_successfully }
     expose: ["3000"]
   worker:
     build: .
@@ -42,14 +42,19 @@ services:
       LOCAL_DATABASE_PATH: ""
     command: ["npm", "run", "worker"]
     depends_on:
-      provision: {condition: service_completed_successfully}
+      provision: { condition: service_completed_successfully }
   proxy:
     image: caddy:2
     restart: unless-stopped
     ports: ["80:80", "443:443"]
     environment:
       DOMAIN: ${DOMAIN:?Set the deployment domain}
-    volumes: ["./deploy/Caddyfile:/etc/caddy/Caddyfile:ro", "caddydata:/data", "caddyconfig:/config"]
+    volumes:
+      [
+        "./deploy/Caddyfile:/etc/caddy/Caddyfile:ro",
+        "caddydata:/data",
+        "caddyconfig:/config",
+      ]
     depends_on: [web]
 volumes:
   pgdata:

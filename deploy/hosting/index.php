@@ -20,7 +20,11 @@ if($_SERVER['REQUEST_METHOD']==='POST')curl_setopt($ch,CURLOPT_POSTFIELDS,$body)
 $response=curl_exec($ch);
 if($response===false){
   // A fixed command, with a lock, can restart the user-owned service after a hosting restart.
-  if(function_exists('exec')) exec('nohup /usr/bin/flock -n /home/u152823332/apps/polylab/supervisor.lock /opt/alt/alt-nodejs24/root/usr/bin/node --env-file=/home/u152823332/apps/polylab/production.env /home/u152823332/apps/polylab/hosting/supervisor.mjs >> /home/u152823332/apps/polylab/logs/supervisor.log 2>&1 < /dev/null &');
+  if(function_exists('proc_open')) {
+    $command='nohup /usr/bin/flock -n /home/u152823332/apps/polylab/supervisor.lock /opt/alt/alt-nodejs24/root/usr/bin/node --env-file=/home/u152823332/apps/polylab/production.env /home/u152823332/apps/polylab/hosting/supervisor.mjs >> /home/u152823332/apps/polylab/logs/supervisor.log 2>&1 < /dev/null &';
+    $process=proc_open(['/bin/sh','-c',$command],[0=>['file','/dev/null','r'],1=>['file',$base.'/logs/proxy-start.log','a'],2=>['file',$base.'/logs/proxy-start.log','a']],$pipes);
+    if(is_resource($process))proc_close($process);
+  }
   http_response_code(503);header('Retry-After: 10');header('Content-Type: text/html; charset=UTF-8');echo '<!doctype html><title>PolyLab</title><h1>PolyLab is starting</h1><p>Please refresh in a few seconds.</p>';exit;
 }
 $size=curl_getinfo($ch,CURLINFO_HEADER_SIZE);$status=curl_getinfo($ch,CURLINFO_RESPONSE_CODE);curl_close($ch);http_response_code($status);

@@ -1,11 +1,30 @@
-import {db} from '../src/db';
-const password=process.env.APP_DATABASE_PASSWORD;if(!password||!/^[a-f0-9]{64}$/.test(password))throw Error('APP_DATABASE_PASSWORD must be 32 random bytes encoded as 64 hex characters');
-const q=db();
-if(!(await q.query("SELECT 1 FROM pg_roles WHERE rolname='polylab_runtime'")).rows.length)await q.query("CREATE ROLE polylab_runtime LOGIN PASSWORD '"+password+"'");
-await q.query('GRANT CONNECT ON DATABASE polylab TO polylab_runtime');
-await q.query('GRANT USAGE ON SCHEMA public TO polylab_runtime');
-await q.query('GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA public TO polylab_runtime');
-await q.query('GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO polylab_runtime');
-await q.query('GRANT UPDATE ON markets,portfolio,positions,login_attempts TO polylab_runtime');
-await q.query('REVOKE ALL ON schema_migrations FROM polylab_runtime');
-console.log('Runtime role provisioned with no delete, truncate or schema ownership privileges');process.exit(0);
+import { db } from "../src/db";
+const password = process.env.APP_DATABASE_PASSWORD;
+if (!password || !/^[a-f0-9]{64}$/.test(password))
+  throw Error(
+    "APP_DATABASE_PASSWORD must be 32 random bytes encoded as 64 hex characters",
+  );
+const q = db();
+if (
+  !(await q.query("SELECT 1 FROM pg_roles WHERE rolname='polylab_runtime'"))
+    .rows.length
+)
+  await q.query(
+    "CREATE ROLE polylab_runtime LOGIN PASSWORD '" + password + "'",
+  );
+await q.query("GRANT CONNECT ON DATABASE polylab TO polylab_runtime");
+await q.query("GRANT USAGE ON SCHEMA public TO polylab_runtime");
+await q.query(
+  "GRANT SELECT,INSERT ON ALL TABLES IN SCHEMA public TO polylab_runtime",
+);
+await q.query(
+  "GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO polylab_runtime",
+);
+await q.query(
+  "GRANT UPDATE ON markets,portfolio,positions,login_attempts TO polylab_runtime",
+);
+await q.query("REVOKE ALL ON schema_migrations FROM polylab_runtime");
+console.log(
+  "Runtime role provisioned with no delete, truncate or schema ownership privileges",
+);
+process.exit(0);

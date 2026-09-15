@@ -22,6 +22,7 @@ Start the supervisor with the installed Node binary, `--env-file` pointing to th
 
 ## Limits
 
-This is a shared-host compatibility deployment, not the separate VPS requested in the original brief. It has no verified system-service startup at machine boot. The PHP proxy attempts a locked restart only when its host permits `exec`; availability must be checked on the hosting plan. A host-wide reboot/process eviction can interrupt unattended scanning. Move the same application to the VPS Compose services for managed restart policies and stronger operational isolation.
+This is a shared-host compatibility deployment, not the separate VPS requested in the original brief. It has no verified system-service startup at machine boot. The PHP proxy attempts a locked restart only when its host permits `proc_open`; availability must be checked on the hosting plan. A host-wide reboot/process eviction can interrupt unattended scanning. Move the same application to the VPS Compose services for managed restart policies and stronger operational isolation.
 
 The current public directory does not contain keys, database files, dependencies or source. Do not copy `.env`, PostgreSQL data or access credentials there. Do not expose either private port publicly.
+
