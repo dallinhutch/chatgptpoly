@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: polylab
+      POSTGRES_USER: polylab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a database password}
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polylab"]
+      interval: 5s
+      retries: 20
+  migrate:
+    build: .
+    env_file: .env
+    command: ["npm", "run", "migrate"]
+    depends_on:
+      postgres: {condition: service_healthy}
+  provision:
+    build: .
+    env_file: .env
+    command: ["node", "--import", "tsx", "scripts/provision-role.ts"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://polylab_runtime:${APP_DATABASE_PASSWORD:?Set runtime password}@postgres:5432/polylab
+      LOCAL_DATABASE_PATH: ""
+    depends_on:
+      provision: {condition: service_completed_successfully}
+    expose: ["3000"]
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://polylab_runtime:${APP_DATABASE_PASSWORD:?Set runtime password}@postgres:5432/polylab
+      LOCAL_DATABASE_PATH: ""
+    command: ["npm", "run", "worker"]
+    depends_on:
+      provision: {condition: service_completed_successfully}
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?Set the deployment domain}
+    volumes: ["./deploy/Caddyfile:/etc/caddy/Caddyfile:ro", "caddydata:/data", "caddyconfig:/config"]
+    depends_on: [web]
+volumes:
+  pgdata:
+  caddydata:
+  caddyconfig:

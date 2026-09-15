@@ -1,0 +1,4 @@
+CREATE TABLE position_updates(id bigserial PRIMARY KEY,position_id bigint NOT NULL REFERENCES positions,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),action text NOT NULL CHECK(action IN('HOLD','REDUCE','EXIT')),reason text NOT NULL,research_id bigint REFERENCES research_runs,book_id bigint REFERENCES market_price_history);
+CREATE TRIGGER immutable_record BEFORE UPDATE OR DELETE ON position_updates FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+CREATE TABLE simulated_exits(id bigserial PRIMARY KEY,position_id bigint UNIQUE NOT NULL REFERENCES positions,created_at timestamptz NOT NULL DEFAULT clock_timestamp(),book_id bigint NOT NULL REFERENCES market_price_history,proceeds numeric(24,6) NOT NULL,fee numeric(24,6) NOT NULL,fills jsonb NOT NULL,reason text NOT NULL);
+CREATE TRIGGER immutable_record BEFORE UPDATE OR DELETE ON simulated_exits FOR EACH ROW EXECUTE FUNCTION forbid_mutation();

@@ -1,0 +1,13 @@
+Options -Indexes
+<IfModule LiteSpeed>
+CacheLookup off
+</IfModule>
+DirectoryIndex index.php
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [L]
+<IfModule mod_headers.c>
+Header always set X-Content-Type-Options "nosniff"
+Header always set X-Frame-Options "DENY"
+Header always set Referrer-Policy "same-origin"
+</IfModule>
