@@ -125,10 +125,11 @@ while (!stopping) {
             const result = await research(m);
             const id = await persistResearch(m.id, version.id, result);
             await job(db(), "research", "completed", { researchId: id }, m.id);
-            if (process.env.PAPER_TRADING_ENABLED === "true" && runActive()) {
+            if (runActive()) {
               const latest = await marketBySlug(m.slug),
                 b = await book(m.slug);
-              await transaction((q) => executePaper(q, String(id), latest, b));
+              await transaction((q) => executePaper(q, String(id), latest, b, new Date(), true));
+              if (process.env.PAPER_TRADING_ENABLED === "true") await transaction((q) => executePaper(q, String(id), latest, b));
             }
           }
         }

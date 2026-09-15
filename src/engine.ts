@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import { recommendationMetrics } from "./recommendation";
 import { assertRunActive } from "./run-window";
 import { strategySchema, type Strategy } from "./config";
 import { type DB, audit } from "./db";
@@ -164,6 +165,7 @@ export async function executePaper(
   m: Market,
   b: Book,
   now = new Date(),
+  recommendOnly = false,
 ) {
   assertRunActive();
   if (b.slug !== m.slug) throw Error("Order book does not match market");
@@ -304,6 +306,21 @@ export async function executePaper(
       reason: "No executable depth / minimum quantity",
     });
     return { status: "unfilled" };
+  }
+  if (recommendOnly) {
+    const metrics = recommendationMetrics(p, Number(run.confidence), Number(result.spent), Number(result.quantity));
+    if (!metrics || !["moneyline", "futures"].includes(String(m.marketType))) return { status: "not_recommended" };
+    const prior = await q.query("SELECT id FROM audit_events WHERE kind='RECOMMENDATION_CREATED' AND payload->>'researchId'=$1 LIMIT 1", [researchId]);
+    if (prior.rows.length) return { status: "duplicate" };
+    const outcome = m.marketSides.find(x => x.long === (side === "LONG"));
+    await audit(q, "RECOMMENDATION_CREATED", {
+      researchId, marketId: m.id, question: m.question, outcome: outcome?.description ?? side, side,
+      recommendedAt: now.toISOString(), quoteAt: b.observedAt.toISOString(), expiresAt: new Date(now.getTime() + 5 * 60000).toISOString(),
+      entryPrice: Number(total(result.fills.map(f => f.notional))) / Number(result.quantity),
+      feeReserve: total(result.fills.map(f => f.fee)), ...metrics,
+      strategyId: version.id, note: "Paper allocation; returns include a conservative fee reserve. Estimates are not guarantees.",
+    });
+    return { status: "recommended" };
   }
   const bookId = await saveBook(q, m.id, b),
     decision = {

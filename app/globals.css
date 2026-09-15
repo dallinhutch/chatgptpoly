@@ -615,3 +615,8 @@ footer {
     flex-wrap: wrap;
   }
 }
+
+.recommendation-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:20px; margin:24px 0; }
+.recommendation-grid small { display:block; color:#617269; margin-bottom:8px; }
+.recommendation-grid strong { font-size:26px; }
+.recommendation { margin-top:20px; }

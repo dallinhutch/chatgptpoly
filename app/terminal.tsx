@@ -11,6 +11,7 @@ const pct = (v: unknown) =>
 const date = (v: unknown) => (v ? new Date(String(v)).toLocaleString() : "—");
 const tabs = [
   "Overview",
+  "RECOMMENDED FOR YOU",
   "Live markets",
   "AI research",
   "Positions",
@@ -26,6 +27,8 @@ export default function Dashboard({ data: d }: { data: any }) {
     [config, setConfig] = useState(d.strategies[0]?.config ?? {}),
     [message, setMessage] = useState("");
   const router = useRouter();
+  const [clock, setClock] = useState<number | null>(null);
+  useEffect(() => { setClock(Date.now()); const timer = setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     const timer = setInterval(() => router.refresh(), 30000);
     return () => clearInterval(timer);
@@ -162,7 +165,7 @@ export default function Dashboard({ data: d }: { data: any }) {
                 setSelected(null);
               }}
             >
-              <span>{["◫", "◉", "⌕", "▤", "↔", "◴", "≋", "⚙"][i]}</span>
+              <span>{["◫", "★", "◉", "⌕", "▤", "↔", "◴", "≋", "⚙"][i]}</span>
               {t}
             </button>
           ))}
@@ -224,6 +227,34 @@ export default function Dashboard({ data: d }: { data: any }) {
               </p>
             </div>
           </div>
+          {tab === "RECOMMENDED FOR YOU" && (
+            <section aria-label="Personal recommendations">
+              <div className="panel">
+                <h2>High confidence. Meaningful upside.</h2>
+                <p>At least 80% estimated win probability and 80% confidence, 25% potential return if correct, and 10% estimated expected return after the fee reserve. Evidence, liquidity and portfolio limits also apply.</p>
+                <p className="muted">{d.runActive ? "Research follows your authorized run and API budget." : "Research run paused — no new paid analysis is running."} Data checked: {date(d.checkedAt)}. Refreshes every 30 seconds.</p>
+              </div>
+              {!(d.recommendations ?? []).length && <div className="panel empty"><b>No qualifying recommendations yet</b><p>Low-margin picks are filtered out. New qualifying research will appear here with its original recommendation time and suggested paper allocation.</p></div>}
+              {(d.recommendations ?? []).map((row: any) => {
+                const r = row.payload;
+                const active = clock !== null && d.runActive && clock < Date.parse(r.expiresAt);
+                return <article className="panel recommendation" key={row.id}>
+                  <div className="sectionhead"><h2>{r.question}</h2><span className="badge">{active ? "CURRENT PAPER IDEA" : "EXPIRED — RECHECK REQUIRED"}</span></div>
+                  <h3>{r.outcome}</h3>
+                  <p>Recommended <time dateTime={r.recommendedAt}>{date(r.recommendedAt)}</time>{clock !== null && ` · ${Math.max(0, Math.floor((clock - Date.parse(r.recommendedAt)) / 60000))} min ago`}</p>
+                  <div className="recommendation-grid">
+                    <div><small>Confidence in analysis</small><strong>{pct(r.confidence)}</strong></div>
+                    <div><small>Estimated win probability</small><strong>{pct(r.probability)}</strong></div>
+                    <div><small>Return if correct</small><strong>{pct(r.returnIfWin)}</strong></div>
+                    <div><small>Suggested paper amount at issue</small><strong>{money(r.recommendedAmount)}</strong></div>
+                  </div>
+                  <p>Entry price: {(r.entryPrice * 100).toFixed(1)}¢ · Profit if correct: {money(r.profitIfWin)} · Maximum loss: {money(r.maxLoss)}</p>
+                  <p>Estimated expected return: {pct(r.expectedReturn)}. This averages winning and losing outcomes; it is not a promised return.</p>
+                  <p className="muted">Quote observed {date(r.quoteAt)} · Valid until {date(r.expiresAt)}. {active ? "Check the current price and exact outcome in Polymarket US before acting." : "The amount and price above are historical, not a current instruction to buy."} {r.note}</p>
+                </article>;
+              })}
+            </section>
+          )}
           {selected ? (
             <article className="panel">
               <button onClick={() => setSelected(null)}>

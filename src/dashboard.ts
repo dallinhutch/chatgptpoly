@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { runActive } from "./run-window";
 export async function dashboard() {
   const q = db();
   const [
@@ -11,6 +12,7 @@ export async function dashboard() {
     strategies,
     snapshots,
     calibration,
+    recommendations,
   ] = await Promise.all([
     q.query(
       "SELECT *, (SELECT MAX(observed_at) FROM market_price_history) AS last_quote FROM portfolio WHERE id=1",
@@ -37,6 +39,7 @@ export async function dashboard() {
     q.query(
       "SELECT r.probability,m.payout,m.market_id,r.strategy_id FROM research_runs r JOIN market_resolutions m ON m.market_id=r.market_id WHERE m.payout IN (0,1) AND r.id=(SELECT MIN(r2.id) FROM research_runs r2 WHERE r2.market_id=r.market_id)",
     ),
+    q.query("SELECT id,created_at,payload FROM audit_events WHERE kind='RECOMMENDATION_CREATED' ORDER BY id DESC LIMIT 50"),
   ]);
   return JSON.parse(
     JSON.stringify({
@@ -49,6 +52,9 @@ export async function dashboard() {
       strategies: strategies.rows,
       snapshots: snapshots.rows,
       calibration: calibration.rows,
+      recommendations: recommendations.rows,
+      checkedAt: new Date().toISOString(),
+      runActive: runActive(),
       researchConfigured:
         !!process.env.OPENAI_API_KEY && process.env.RESEARCH_ENABLED === "true",
       tradingEnabled: process.env.PAPER_TRADING_ENABLED === "true",
