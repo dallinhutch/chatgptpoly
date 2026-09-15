@@ -15,7 +15,8 @@ export async function reserveResearch(marketId: string) {
     const amount = process.env.RUN_END_AT ? 2 : 1;
     if (process.env.RUN_END_AT) {
       const used = Number((await q.query("SELECT COALESCE(SUM(reserved_usd),0) AS used FROM research_budget_reservations WHERE created_at >= $1", [process.env.RUN_START_AT])).rows[0].used);
-      if (used + amount > 10) throw Error("Eight-hour run API reservation cap reached");
+      const cap = Number(process.env.RUN_API_BUDGET_USD ?? 10);
+      if (!Number.isFinite(cap) || cap < 0 || used + amount > cap) throw Error("Run API reservation cap reached");
     }
     if (
       !Number.isFinite(daily) ||

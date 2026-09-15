@@ -12,10 +12,14 @@ test("run budget reserves at most ten dollars and rejects calls after its deadli
   process.env.RUN_END_AT = new Date(Date.now() + 3600000).toISOString();
   process.env.RESEARCH_DAILY_RESERVE_USD = "100";
   process.env.RESEARCH_LIFETIME_RESERVE_USD = "100";
+  process.env.RUN_API_BUDGET_USD = "2";
   try {
     await migrate(db());
     await db().query("INSERT INTO markets(id,slug,question,category,rules,raw) VALUES('budget-test','budget-test','test','test','test','{}')");
-    for (let i = 0; i < 5; i++) await reserveResearch("budget-test");
+    await reserveResearch("budget-test");
+    await assert.rejects(reserveResearch("budget-test"), /cap reached/);
+    process.env.RUN_API_BUDGET_USD = "10";
+    for (let i = 1; i < 5; i++) await reserveResearch("budget-test");
     await assert.rejects(reserveResearch("budget-test"), /cap reached/);
     assert.equal(Number((await db().query("SELECT SUM(reserved_usd) AS total FROM research_budget_reservations")).rows[0].total), 10);
     process.env.RUN_END_AT = new Date(Date.now() - 1).toISOString();
