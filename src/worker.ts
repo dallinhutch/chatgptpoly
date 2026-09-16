@@ -15,6 +15,7 @@ import { persistResearch } from "./persist-research";
 import { reviewPosition } from "./monitor";
 import { runActive, researchWindowOpen } from "./run-window";
 import { adaptConfidence } from "./adapt";
+import { exploratoryBuy } from "./exploration";
 
 let stopping = false;
 process.on("SIGTERM", () => {
@@ -76,6 +77,16 @@ while (!stopping) {
     await transaction(snapshot);
     const candidates = await scan(db());
     await adaptConfidence();
+    if (process.env.EXPLORATORY_PAPER_ENABLED === "true" && process.env.PAPER_TRADING_ENABLED === "true" && runActive()) {
+      for (const candidate of candidates.filter(c=>c.market.marketType === "moneyline")) {
+        const m = await marketBySlug(candidate.market.slug);
+        const b = await book(m.slug);
+        const result = await transaction(q=>exploratoryBuy(q,m,b));
+        await job(db(),"exploration",result.status,result,m.id);
+        if (["filled","cooldown","risk_limit","entry_window_closed"].includes(result.status)) break;
+      }
+      await transaction(snapshot);
+    }
     if (process.env.RESEARCH_ENABLED === "true" && process.env.OPENAI_API_KEY && researchWindowOpen()) {
       const used = Number(
         (
@@ -87,7 +98,10 @@ while (!stopping) {
       const max = Number(process.env.MAX_RESEARCH_RUNS_PER_DAY ?? 3);
       const last = (await db().query("SELECT MAX(created_at) AS at FROM research_budget_reservations WHERE created_at >= $1", [process.env.RUN_START_AT ?? "1970-01-01T00:00:00Z"])).rows[0].at;
       const spaced = !last || Date.now() - new Date(last).getTime() >= Number(process.env.RESEARCH_INTERVAL_MINUTES ?? 0) * 60000;
-      if (used < max && spaced) {
+      const reserved = Number((await db().query("SELECT COALESCE(SUM(reserved_usd),0) AS used FROM research_budget_reservations WHERE created_at >= $1", [process.env.RUN_START_AT ?? "1970-01-01T00:00:00Z"])).rows[0].used);
+      const hasBudget = !process.env.RUN_END_AT || reserved + 2 <= Number(process.env.RUN_API_BUDGET_USD ?? 10);
+      if (!hasBudget) await job(db(),"research","paused",{reason:"Run API reservation cap reached; exploratory paper monitoring continues"});
+      if (used < max && spaced && hasBudget) {
         let candidate;
         for (const c of candidates.filter((c) => c.eligible)) {
           const recent = (
@@ -136,7 +150,7 @@ while (!stopping) {
       }
     } else
       await job(db(), "research", "disabled", {
-        reason: "Configure an API key and enable research",
+        reason: !researchWindowOpen() ? "Outside authorized research window" : "Research disabled or API key missing",
       });
     await job(db(), "heartbeat", "completed", { at: new Date().toISOString() });
   } catch (e) {

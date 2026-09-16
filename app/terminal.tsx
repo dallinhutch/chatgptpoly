@@ -405,6 +405,7 @@ export default function Dashboard({ data: d }: { data: any }) {
               {tab === "Positions" && (
                 <article className="panel">
                   <h2>Open paper positions</h2>
+                  <p>Exploratory positions test a small market-favorite strategy: up to $5 each, with timed exits and profit/loss limits. They have no AI confidence estimate or established positive expected return.</p>
                   {open.length ? (
                     <table>
                       <thead>
@@ -420,7 +421,7 @@ export default function Dashboard({ data: d }: { data: any }) {
                         {open.map((p: any) => (
                           <tr key={p.id}>
                             <td>{p.question}</td>
-                            <td>{p.side}</td>
+                            <td>{p.decision?.outcome ?? p.side}{p.decision?.mode === "exploratory" ? " · Exploratory" : ""}</td>
                             <td>{p.quantity}</td>
                             <td>{money(p.cost)}</td>
                             <td>{date(p.opened_at)}</td>
@@ -457,8 +458,8 @@ export default function Dashboard({ data: d }: { data: any }) {
                         {d.history.map((o: any) => (
                           <tr key={o.id}>
                             <td>{o.question}</td>
-                            <td>{o.side}</td>
-                            <td>{pct(o.probability)}</td>
+                            <td>{o.decision?.outcome ?? o.side}</td>
+                            <td>{o.decision?.mode === "exploratory" ? "Exploratory · not estimated" : pct(o.probability)}</td>
                             <td>v{o.strategy_id}</td>
                             <td>{date(o.created_at)}</td>
                           </tr>

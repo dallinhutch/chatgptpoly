@@ -15,11 +15,12 @@ export async function reviewPosition(
   await q.query("SELECT id FROM portfolio WHERE id=1 FOR UPDATE");
   const p = (
     await q.query(
-      "SELECT * FROM positions WHERE id=$1 AND closed_at IS NULL FOR UPDATE",
+      "SELECT p.*,o.decision FROM positions p JOIN simulated_orders o ON o.id=p.order_id WHERE p.id=$1 AND p.closed_at IS NULL FOR UPDATE OF p",
       [positionId],
     )
   ).rows[0];
   if (!p) return;
+  if (p.market_id !== m.id || b.slug !== m.slug) throw Error("Exit book does not match position");
   const run = (
     await q.query(
       "SELECT * FROM research_runs WHERE market_id=$1 ORDER BY created_at DESC LIMIT 1",
@@ -53,7 +54,7 @@ export async function reviewPosition(
         }));
   const bid = levels[0]?.price;
   if (
-    run &&
+    p.decision?.mode !== "exploratory" && run &&
     now - new Date(run.created_at).getTime() <=
       s.maxResearchAgeHours * 3600000 &&
     new Date(run.created_at).getTime() <= now &&
@@ -72,6 +73,16 @@ export async function reviewPosition(
       reason =
         "Fresh probability estimate is below executable liquidation value";
     }
+  }
+  if (p.decision?.mode === "exploratory" && bid) {
+    const net = new Decimal(p.quantity).mul(bid).minus(new Decimal(p.quantity).mul(s.feeBuffer).toDecimalPlaces(2,Decimal.ROUND_UP));
+    const change = net.div(p.cost).minus(1).toNumber();
+    const elapsed = now - new Date(p.opened_at).getTime();
+    const ending = Date.parse(process.env.RUN_END_AT ?? "") - now <= 15*60000;
+    if (elapsed >= 30*60000 || change >= 0.10 || change <= -0.15 || ending) {
+      action = "EXIT";
+      reason = ending ? "Exploratory run ending" : elapsed >= 30*60000 ? "Exploratory 30-minute holding limit" : change >= 0.10 ? "Exploratory profit target" : "Exploratory loss limit";
+    } else reason = "Exploratory baseline: monitor time, profit and loss limits";
   }
   await q.query(
     "INSERT INTO position_updates(position_id,action,reason,research_id,book_id) VALUES($1,$2,$3,$4,$5)",

@@ -21,10 +21,10 @@ export async function dashboard() {
       "SELECT m.*,h.book,h.observed_at,r.probability,r.confidence,r.quality,r.id AS research_id FROM markets m LEFT JOIN LATERAL(SELECT book,observed_at FROM market_price_history WHERE market_id=m.id ORDER BY observed_at DESC LIMIT 1)h ON true LEFT JOIN LATERAL(SELECT * FROM research_runs WHERE market_id=m.id ORDER BY created_at DESC LIMIT 1)r ON true ORDER BY m.updated_at DESC LIMIT 100",
     ),
     q.query(
-      "SELECT p.*,m.question FROM positions p JOIN markets m ON m.id=p.market_id ORDER BY opened_at DESC",
+      "SELECT p.*,m.question,o.decision FROM positions p JOIN markets m ON m.id=p.market_id JOIN simulated_orders o ON o.id=p.order_id ORDER BY opened_at DESC",
     ),
     q.query(
-      "SELECT o.*,m.question,r.probability,r.confidence FROM simulated_orders o JOIN markets m ON m.id=o.market_id JOIN research_runs r ON r.id=o.research_id ORDER BY o.created_at DESC LIMIT 200",
+      "SELECT o.*,m.question,r.probability,r.confidence FROM simulated_orders o JOIN markets m ON m.id=o.market_id LEFT JOIN research_runs r ON r.id=o.research_id ORDER BY o.created_at DESC LIMIT 200",
     ),
     q.query(
       "SELECT r.*,m.question FROM research_runs r JOIN markets m ON m.id=r.market_id ORDER BY r.created_at DESC LIMIT 100",

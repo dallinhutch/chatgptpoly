@@ -1,0 +1,54 @@
+import Decimal from "decimal.js";
+import { type DB, audit } from "./db";
+import { strategySchema } from "./config";
+import { type Market, type Book, isOpen } from "./polymarket";
+import { saveBook } from "./engine";
+import { simulateBuy } from "./finance";
+import { assertRunActive } from "./run-window";
+
+/** A small market-favorite baseline experiment; no estimated edge or AI confidence. */
+export async function exploratoryBuy(q: DB, m: Market, b: Book, now = new Date()) {
+  assertRunActive();
+  if (process.env.EXPLORATORY_PAPER_ENABLED !== "true" || process.env.PAPER_TRADING_ENABLED !== "true") return {status:"disabled"};
+  const stop = Date.parse(process.env.RUN_END_AT ?? "");
+  const start = process.env.RUN_START_AT;
+  if (!start || !Number.isFinite(stop) || stop - now.getTime() < 45 * 60000) return {status:"entry_window_closed"};
+  const account = (await q.query("SELECT * FROM portfolio WHERE id=1 FOR UPDATE")).rows[0];
+  const version = (await q.query("SELECT * FROM strategy_versions ORDER BY id DESC LIMIT 1")).rows[0];
+  const s = strategySchema.parse(version.config);
+  const game = typeof m.gameStartTime === "string" ? Date.parse(m.gameStartTime) : NaN;
+  const age = now.getTime() - b.observedAt.getTime();
+  if (b.slug !== m.slug || !isOpen(m) || b.state !== "MARKET_STATE_OPEN" || m.marketType !== "moneyline" || !m.description.trim() || !Number.isFinite(game) || game < now.getTime() - 3 * 3600000 || game > Math.min(stop, now.getTime() + 8 * 3600000) || age < 0 || age > s.maxBookAgeSeconds * 1000) return {status:"ineligible"};
+  if (!b.bids.length || !b.offers.length) return {status:"no_liquidity"};
+  const bid = Number(b.bids[0].price), ask = Number(b.offers[0].price);
+  if (ask < bid || ask - bid > 0.03) return {status:"spread"};
+  const mid = (bid + ask) / 2;
+  const side = mid >= 0.5 ? "LONG" : "SHORT";
+  const levels = side === "LONG" ? b.offers : b.bids.map(l=>({price:new Decimal(1).minus(l.price).toString(),quantity:l.quantity}));
+  const price = Number(levels[0].price);
+  if (price < 0.55 || price > 0.85) return {status:"price_range"};
+  const key = `explore:${start}:${m.id}`;
+  if ((await q.query("SELECT id FROM simulated_orders WHERE idempotency_key=$1",[key])).rows.length) return {status:"duplicate"};
+  const positions = (await q.query("SELECT * FROM positions WHERE closed_at IS NULL")).rows;
+  if (positions.some(p=>p.market_id === m.id)) return {status:"existing_position"};
+  const used = (await q.query("SELECT COALESCE(SUM(p.cost),0) AS spent,MAX(p.opened_at) AS last FROM positions p JOIN simulated_orders o ON o.id=p.order_id WHERE o.decision->>'mode'='exploratory' AND p.opened_at >= $1",[start])).rows[0];
+  if (used.last && now.getTime()-new Date(used.last).getTime()<10*60000) return {status:"cooldown"};
+  const sum = (rows:any[])=>rows.reduce((n,p)=>n+Number(p.cost),0);
+  const snapshot = (await q.query("SELECT equity,stale_marks FROM portfolio_snapshots ORDER BY id DESC LIMIT 1")).rows[0];
+  if (positions.length && (!snapshot || snapshot.stale_marks)) return {status:"stale_portfolio"};
+  const equity = Number(snapshot?.equity ?? account.cash);
+  if (equity < 990 || positions.length >= 4) return {status:"risk_limit"};
+  const budget = Math.max(0,Math.min(5,100-Number(used.spent),20-sum(positions),15-sum(positions.filter(p=>p.category===m.category)),Number(account.cash)-500));
+  if (budget < 1) return {status:"risk_limit"};
+  const result = simulateBuy(levels,budget.toFixed(6),String(price),s.feeBuffer,b.observedAt,now,s.maxBookAgeSeconds);
+  if (Number(result.quantity)<(m.minimumTradeQty ?? 1) || !result.fills.length) return {status:"unfilled"};
+  const bookId = await saveBook(q,m.id,b);
+  const outcome = m.marketSides.find(x=>x.long===(side==="LONG"))?.description ?? side;
+  const decision = {mode:"exploratory",outcome,budget,market:m,at:now.toISOString(),probability:null,confidence:null,reason:"Small market-favorite baseline experiment; positive expected return is not established",exitPolicy:{maxHoldMinutes:30,takeProfit:0.10,stopLoss:0.15},feeModel:"Conservative per-share fee reserve"};
+  const order = (await q.query("INSERT INTO simulated_orders(idempotency_key,market_id,research_id,strategy_id,book_id,side,decision) VALUES($1,$2,NULL,$3,$4,$5,$6) RETURNING id",[key,m.id,version.id,bookId,side,JSON.stringify(decision)])).rows[0];
+  for (const f of result.fills) await q.query("INSERT INTO simulated_fills(order_id,price,quantity,notional,fee) VALUES($1,$2,$3,$4,$5)",[order.id,f.price,f.quantity,f.notional,f.fee]);
+  await q.query("UPDATE portfolio SET cash=cash-$1 WHERE id=1",[result.spent]);
+  await q.query("INSERT INTO positions(order_id,market_id,category,correlation_group,side,quantity,cost) VALUES($1,$2,$3,$3,$4,$5,$6)",[order.id,m.id,m.category,side,result.quantity,result.spent]);
+  await audit(q,"PAPER_ENTRY",{orderId:order.id,marketId:m.id,decision,...result});
+  return {status:"filled",market:m.question,outcome,side,...result};
+}

@@ -117,6 +117,10 @@ export async function scan(q: DB, maxMarkets = 1000) {
   if (process.env.PREFER_SHORT_TERM === "true") {
     open.sort((a, b) => opportunityTime(a) - opportunityTime(b));
   }
+  if (process.env.EXPLORATORY_PAPER_ENABLED === "true") {
+    const near = (m: Market) => m.marketType === "moneyline" && typeof m.gameStartTime === "string" && Date.parse(m.gameStartTime) >= Date.now()-3*3600000 && Date.parse(m.gameStartTime) <= Date.now()+8*3600000;
+    open.sort((a,b)=>Number(near(b))-Number(near(a)) || (observed.get(a.id) ?? 0)-(observed.get(b.id) ?? 0) || opportunityTime(a)-opportunityTime(b));
+  }
   const bookLimit = Math.max(
     1,
     Math.min(100, Number(process.env.BOOKS_PER_SCAN ?? 30)),
