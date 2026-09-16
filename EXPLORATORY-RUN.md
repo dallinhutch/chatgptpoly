@@ -4,7 +4,7 @@ The user authorized a new eight-hour paper run, a $10 API cap, and a target of a
 
 This baseline buys the quoted favorite in live Polymarket US moneyline markets with explicit settlement descriptions and game times in the near-term window. It does not claim an independently estimated probability or positive expected return. Orders have nullable research IDs and are explicitly labeled exploratory. AI recommendations retain their existing evidence and return filters.
 
-Limits: $5 maximum per entry including conservative fees; $20 total open cost; at most four open positions; $15 per category; $100 total exploratory entry cost per run; at least ten minutes between entries; one exploratory entry per market per run; pause new exploratory entries below $990 marked equity. These limits and market availability may prevent the target.
+Following the user's request for bigger paper bets, limits are $25 maximum per entry including conservative fees; $100 total open cost; at most four open positions; $75 per category; $500 total exploratory entry cost per run; at least ten minutes between entries; one exploratory entry per market per run; pause new exploratory entries below $990 marked equity. These limits and market availability may prevent the target. Existing positions retain their original quantities and costs. The $10 API cap, eight-hour deadline, and exit rules are unchanged.
 
 Entries require two-sided live books, spread no more than three cents, favorite ask between 55 and 85 cents, matching market/quote IDs, and current quotes. Simulated buys consume actual quoted whole-share depth. No new exploratory entries in the final 45 minutes.
 

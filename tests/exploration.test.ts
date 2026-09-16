@@ -25,7 +25,7 @@ test("exploratory ledger has no fake research, respects limits, and exits with r
     const buy=await p.transaction(t=>exploratoryBuy(adapter(t),m,b));
     assert.equal(buy.status,"filled");
     const pos=(await q.query("SELECT * FROM positions")).rows[0];
-    assert.ok(Number(pos.cost)<=5);
+    assert.ok(Number(pos.cost)>20 && Number(pos.cost)<=25);
     assert.equal((await q.query("SELECT * FROM research_runs")).rows.length,0);
     assert.equal((await q.query("SELECT research_id FROM simulated_orders")).rows[0].research_id,null);
     assert.equal(Number((await q.query("SELECT cash FROM portfolio")).rows[0].cash)+Number(pos.cost),1000);

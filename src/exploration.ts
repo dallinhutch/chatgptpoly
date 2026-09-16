@@ -38,7 +38,7 @@ export async function exploratoryBuy(q: DB, m: Market, b: Book, now = new Date()
   if (positions.length && (!snapshot || snapshot.stale_marks)) return {status:"stale_portfolio"};
   const equity = Number(snapshot?.equity ?? account.cash);
   if (equity < 990 || positions.length >= 4) return {status:"risk_limit"};
-  const budget = Math.max(0,Math.min(5,100-Number(used.spent),20-sum(positions),15-sum(positions.filter(p=>p.category===m.category)),Number(account.cash)-500));
+  const budget = Math.max(0,Math.min(25,500-Number(used.spent),100-sum(positions),75-sum(positions.filter(p=>p.category===m.category)),Number(account.cash)-500));
   if (budget < 1) return {status:"risk_limit"};
   const result = simulateBuy(levels,budget.toFixed(6),String(price),s.feeBuffer,b.observedAt,now,s.maxBookAgeSeconds);
   if (Number(result.quantity)<(m.minimumTradeQty ?? 1) || !result.fills.length) return {status:"unfilled"};

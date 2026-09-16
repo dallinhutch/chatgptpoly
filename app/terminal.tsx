@@ -405,7 +405,7 @@ export default function Dashboard({ data: d }: { data: any }) {
               {tab === "Positions" && (
                 <article className="panel">
                   <h2>Open paper positions</h2>
-                  <p>Exploratory positions test a small market-favorite strategy: up to $5 each, with timed exits and profit/loss limits. They have no AI confidence estimate or established positive expected return.</p>
+                  <p>Exploratory positions test a market-favorite strategy: up to $25 each and $100 open at once, with timed exits and profit/loss limits. They have no AI confidence estimate or established positive expected return.</p>
                   {open.length ? (
                     <table>
                       <thead>
