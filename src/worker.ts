@@ -11,6 +11,8 @@ import {
 import { research } from "./research";
 import { book, marketBySlug, settlement } from "./polymarket";
 import pg from "pg";
+import { budgetUsage } from "./budget";
+import { strictRun, strictMarket, strictEntryStatus } from "./strict-run";
 import { persistResearch } from "./persist-research";
 import { reviewPosition } from "./monitor";
 import { runActive, researchWindowOpen } from "./run-window";
@@ -31,8 +33,10 @@ if (
     .acquired
 )
   throw Error("Another worker owns the lease");
-while (!stopping) {
-  try {
+// Exit checks run independently of slow market scans and AI requests.
+async function monitorLoop() {
+  while (!stopping) {
+    try {
     for (const row of (
       await db().query(
         "SELECT DISTINCT m.slug FROM positions p JOIN markets m ON m.id=p.market_id WHERE p.closed_at IS NULL",
@@ -75,6 +79,14 @@ while (!stopping) {
       }
     }
     await transaction(snapshot);
+
+    } catch(e) { console.error("Monitor:",e instanceof Error?e.message:"Unknown"); }
+    for(let n=0;n<5 && !stopping;n++) await new Promise(r=>setTimeout(r,1000));
+  }
+}
+const monitoring=monitorLoop();
+while (!stopping) {
+  try {
     const candidates = await scan(db());
     await adaptConfidence();
     if (process.env.EXPLORATORY_PAPER_ENABLED === "true" && process.env.PAPER_TRADING_ENABLED === "true" && runActive()) {
@@ -87,7 +99,7 @@ while (!stopping) {
       }
       await transaction(snapshot);
     }
-    if (process.env.RESEARCH_ENABLED === "true" && process.env.OPENAI_API_KEY && researchWindowOpen()) {
+    if (process.env.RESEARCH_ENABLED === "true" && process.env.OPENAI_API_KEY && researchWindowOpen() && !(await strictEntryStatus(db()))) {
       const used = Number(
         (
           await db().query(
@@ -98,12 +110,13 @@ while (!stopping) {
       const max = Number(process.env.MAX_RESEARCH_RUNS_PER_DAY ?? 3);
       const last = (await db().query("SELECT MAX(created_at) AS at FROM research_budget_reservations WHERE created_at >= $1", [process.env.RUN_START_AT ?? "1970-01-01T00:00:00Z"])).rows[0].at;
       const spaced = !last || Date.now() - new Date(last).getTime() >= Number(process.env.RESEARCH_INTERVAL_MINUTES ?? 0) * 60000;
-      const reserved = Number((await db().query("SELECT COALESCE(SUM(reserved_usd),0) AS used FROM research_budget_reservations WHERE created_at >= $1", [process.env.RUN_START_AT ?? "1970-01-01T00:00:00Z"])).rows[0].used);
+      const reserved = (await budgetUsage(db())).run;
       const hasBudget = !process.env.RUN_END_AT || reserved + 2 <= Number(process.env.RUN_API_BUDGET_USD ?? 10);
       if (!hasBudget) await job(db(),"research","paused",{reason:"Run API reservation cap reached; exploratory paper monitoring continues"});
       if (used < max && spaced && hasBudget) {
         let candidate;
-        for (const c of candidates.filter((c) => c.eligible)) {
+        for (const c of candidates.filter((c) => c.eligible && (!strictRun() || strictMarket(c.market)))) {
+          if(await strictEntryStatus(db(),c.market.id)) continue;
           const recent = (
             await db().query(
               "SELECT id FROM research_runs WHERE market_id=$1 AND created_at>now()-interval '6 hours'",
@@ -164,6 +177,7 @@ while (!stopping) {
   for (let waited = 0; waited < delay && !stopping; waited += 1000)
     await new Promise((r) => setTimeout(r, 1000));
 }
+await monitoring;
 await lock.query("SELECT pg_advisory_unlock(710032)");
 lock.release();
 process.exit(0);

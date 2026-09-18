@@ -74,14 +74,15 @@ export async function reviewPosition(
         "Fresh probability estimate is below executable liquidation value";
     }
   }
-  if (p.decision?.mode === "exploratory" && bid) {
+  if (["exploratory","researched-strict"].includes(p.decision?.mode) && bid) {
     const net = new Decimal(p.quantity).mul(bid).minus(new Decimal(p.quantity).mul(s.feeBuffer).toDecimalPlaces(2,Decimal.ROUND_UP));
     const change = net.div(p.cost).minus(1).toNumber();
     const elapsed = now - new Date(p.opened_at).getTime();
     const ending = Date.parse(process.env.RUN_END_AT ?? "") - now <= 15*60000;
-    if (elapsed >= 30*60000 || change >= 0.10 || change <= -0.15 || ending) {
+    const strict=p.decision?.mode === "researched-strict";
+    if (elapsed >= (strict?60:30)*60000 || change >= 0.10 || change <= -(strict?0.10:0.15) || ending) {
       action = "EXIT";
-      reason = ending ? "Exploratory run ending" : elapsed >= 30*60000 ? "Exploratory 30-minute holding limit" : change >= 0.10 ? "Exploratory profit target" : "Exploratory loss limit";
+      reason = ending ? "Paper run ending" : elapsed >= (strict?60:30)*60000 ? "Paper holding time limit" : change >= 0.10 ? "Paper profit target" : "Paper loss limit";
     } else reason = "Exploratory baseline: monitor time, profit and loss limits";
   }
   await q.query(

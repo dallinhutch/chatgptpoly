@@ -34,10 +34,16 @@ async function probe() {
   finally { await client.end().catch(() => {}); }
 }
 async function setup(script) {
-  const child = launch("setup", process.execPath, ["--import", "tsx", script], ownerEnv);
+  const child = launch("setup", process.execPath, scriptArgs(script), ownerEnv);
   for (let i = 0; i < 600 && alive(child) && !stopping; i++) await sleep(100);
   if (alive(child)) await terminate(child);
   if (child.exitCode !== 0) throw Error("Setup failed: " + script);
+}
+// Precompiled entrypoints avoid the tsx loader thread's virtual-memory reservation
+// when PHP starts recovery under the shared host's 4 GiB address-space limit.
+function scriptArgs(script) {
+  const compiled="dist-runtime/"+script.replace(/\.ts$/, ".mjs");
+  return existsSync(app+"/"+compiled) ? [compiled] : ["--import","tsx",script];
 }
 function status(state, extra = {}) {
   const value = { at: new Date().toISOString(), supervisorPid: process.pid, generation, state, ...extra };
@@ -64,13 +70,13 @@ while (!stopping) {
     }
     if (stopping) break;
     web = launch("web", process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "31823"]);
-    worker = launch("worker", process.execPath, ["--import", "tsx", "src/worker.ts"]);
+    worker = launch("worker", process.execPath, scriptArgs("src/worker.ts"));
     let failedProbes = 0, ticks = 0;
     log("GENERATION_STARTED", { generation, databasePid: database.pid, webPid: web.pid, workerPid: worker.pid });
     while (!stopping) {
       if (!alive(database)) throw Error("Database exited");
       if (!alive(web)) { web = launch("web", process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "31823"]); }
-      if (!alive(worker)) { worker = launch("worker", process.execPath, ["--import", "tsx", "src/worker.ts"]); }
+      if (!alive(worker)) { worker = launch("worker", process.execPath, scriptArgs("src/worker.ts")); }
       if (ticks++ % 10 === 0) {
         failedProbes = await probe() ? 0 : failedProbes + 1;
         status(failedProbes ? "degraded" : "healthy", { databasePid: database.pid, webPid: web.pid, workerPid: worker.pid });

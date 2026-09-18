@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import { strictRun, strictMarket, strictEntryStatus } from "./strict-run";
 import { recommendationMetrics } from "./recommendation";
 import { assertRunActive } from "./run-window";
 import { strategySchema, type Strategy } from "./config";
@@ -117,7 +118,7 @@ export async function scan(q: DB, maxMarkets = 1000) {
   if (process.env.PREFER_SHORT_TERM === "true") {
     open.sort((a, b) => opportunityTime(a) - opportunityTime(b));
   }
-  if (process.env.EXPLORATORY_PAPER_ENABLED === "true") {
+  if (process.env.EXPLORATORY_PAPER_ENABLED === "true" || strictRun()) {
     const near = (m: Market) => m.marketType === "moneyline" && typeof m.gameStartTime === "string" && Date.parse(m.gameStartTime) >= Date.now()-3*3600000 && Date.parse(m.gameStartTime) <= Date.now()+8*3600000;
     open.sort((a,b)=>Number(near(b))-Number(near(a)) || (observed.get(a.id) ?? 0)-(observed.get(b.id) ?? 0) || opportunityTime(a)-opportunityTime(b));
   }
@@ -196,6 +197,11 @@ export async function executePaper(
   )
     return { status: "duplicate" };
   const reasons = screen(m, b, s).reasons;
+  if (strictRun()) {
+    const blocked=await strictEntryStatus(q,m.id,now.getTime());
+    if(blocked) reasons.push(blocked);
+    if(!strictMarket(m,now.getTime())) reasons.push("Outside short-term moneyline scope");
+  }
   if (
     run.analysis.marketSnapshot &&
     run.analysis.marketSnapshot.description !== m.description
@@ -264,7 +270,8 @@ export async function executePaper(
     p = side === "LONG" ? Number(run.probability) : 1 - Number(run.probability),
     edge = Math.max(longEdge, shortEdge);
   if (edge < s.minEdge) reasons.push("Net edge below threshold");
-  const budget = sizePosition(
+  if(strictRun() && (p<0.8 || Number(run.confidence)<0.85 || Number(run.quality)<0.85)) reasons.push("Strict probability or evidence threshold not met");
+  let budget = sizePosition(
     {
       probability: p,
       price,
@@ -278,6 +285,7 @@ export async function executePaper(
     },
     s,
   );
+  if(strictRun()) budget=Decimal.max(0,Decimal.min(budget,25,new Decimal(100).minus(exposure))).toFixed(6);
   if (new Decimal(budget).lte(0)) reasons.push("Risk budget exhausted");
   if (reasons.length) {
     await audit(q, "NO_TRADE", {
@@ -328,6 +336,7 @@ export async function executePaper(
   }
   const bookId = await saveBook(q, m.id, b),
     decision = {
+      ...(strictRun() ? {mode:"researched-strict",confidence:Number(run.confidence),runStart:process.env.RUN_START_AT,exitPolicy:{maxHoldMinutes:60,takeProfit:0.10,stopLoss:0.10}} : {}),
       edge,
       probability: p,
       budget,

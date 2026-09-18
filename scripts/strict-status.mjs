@@ -1,0 +1,10 @@
+process.env.DATABASE_URL=`postgresql://polylab_runtime:${process.env.APP_DATABASE_PASSWORD}@127.0.0.1:31824/polylab`;
+const {db,closeDatabase}=await import('../src/db.ts');
+const {budgetUsage}=await import('../src/budget.ts');
+const {runActive}=await import('../src/run-window.ts');
+const q=db(),start=process.env.RUN_START_AT;
+const trades=(await q.query(`SELECT p.id,p.market_id,m.question,m.slug,p.side,p.quantity,p.cost,p.payout,p.realized_pnl,p.opened_at,p.closed_at,o.decision->>'mode' AS mode,o.decision->>'confidence' AS confidence,o.decision->>'probability' AS probability FROM positions p JOIN simulated_orders o ON o.id=p.order_id JOIN markets m ON m.id=p.market_id WHERE p.opened_at >= $1 ORDER BY p.id`,[start])).rows;
+const jobs=(await q.query("SELECT kind,status,market_id,created_at,CASE WHEN kind='analyst_response' THEN jsonb_build_object('usage',detail->'usage','responseId',detail->'responseId') ELSE detail END AS detail FROM system_jobs WHERE created_at >= $1 AND kind != 'analyst_attempt' ORDER BY id DESC LIMIT 12",[start])).rows;
+const rejections=(await q.query("SELECT payload->'reasons' AS reasons,COUNT(*) AS n FROM audit_events WHERE kind='NO_TRADE' AND created_at >= $1 GROUP BY payload->'reasons'",[start])).rows;
+console.log(JSON.stringify({at:new Date().toISOString(),start,end:process.env.RUN_END_AT,active:runActive(),target:Number(process.env.RUN_TRADE_TARGET),startEquity:Number(process.env.RUN_START_EQUITY),portfolio:(await q.query('SELECT cash FROM portfolio WHERE id=1')).rows[0],snapshot:(await q.query('SELECT * FROM portfolio_snapshots ORDER BY id DESC LIMIT 1')).rows[0],budget:await budgetUsage(q),trades,jobs,rejections}));
+await closeDatabase();

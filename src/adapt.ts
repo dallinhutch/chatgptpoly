@@ -3,6 +3,7 @@ import { strategySchema } from "./config";
 import { runActive } from "./run-window";
 /** Explicitly authorized modest relaxation; all other strategy gates remain intact. */
 export async function adaptConfidence() {
+  if (process.env.STRICT_PAPER_RUN === "true") return;
   if (!process.env.RUN_START_AT || !runActive()) return;
   const elapsed = Date.now() - Date.parse(process.env.RUN_START_AT);
   if (elapsed < 3600000) return;
